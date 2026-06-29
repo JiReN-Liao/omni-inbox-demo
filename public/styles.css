@@ -104,6 +104,22 @@ p { color: var(--muted); font-size: 13px; line-height: 1.6; }
 ::selection { background: rgba(6, 199, 85, 0.2); }
 ::placeholder { color: var(--muted-2); }
 
+/* App-like text handling: clicking the console chrome (labels, headings, rows)
+   never drops a text caret or I-beam. Genuine content stays selectable so
+   operators can still copy customer messages, IDs, and webhook URLs. */
+body { -webkit-user-select: none; user-select: none; }
+.bubble,
+.ctx-customer .ctx-name,
+.ctx-customer .ctx-meta,
+.ctx-summary,
+.webhook,
+.verify-token,
+.webhook-copy code,
+input, select, textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb {
   background: rgba(13, 18, 25, 0.16);
