@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Omni Inbox</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#mainContent" id="skipLink"></a>
+
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"><span class="i" data-icon="inbox"></span></span>
+        <div class="brand-text">
+          <strong>Omni Inbox</strong>
+          <small id="brandSubtitle"></small>
+        </div>
+      </div>
+
+      <div class="workspace-card">
+        <span class="workspace-kicker" id="workspaceKicker"></span>
+        <strong id="workspaceName"></strong>
+        <span class="workspace-status"><span class="live-dot" aria-hidden="true"></span><span id="workspaceStatus"></span></span>
+      </div>
+
+      <div class="rail-group">
+        <span class="rail-label" id="oaLabel"></span>
+        <div id="sidebarAccounts" class="rail-accounts"></div>
+      </div>
+
+      <nav id="primaryNav" aria-label="">
+        <button class="nav active" data-view="inbox" id="navInbox">
+          <span class="i" data-icon="inbox" aria-hidden="true"></span><span class="nav-text"></span>
+        </button>
+        <button class="nav" data-view="accounts" id="navAccounts">
+          <span class="i" data-icon="grid" aria-hidden="true"></span><span class="nav-text"></span>
+        </button>
+        <button class="nav" data-view="access" id="navAccess">
+          <span class="i" data-icon="users" aria-hidden="true"></span><span class="nav-text"></span>
+        </button>
+      </nav>
+
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+    </aside>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <button id="globalSearchBtn" class="global-search" type="button" aria-haspopup="dialog" aria-label="">
+          <span class="i" data-icon="search" aria-hidden="true"></span>
+          <span id="globalSearchLabel"></span>
+          <kbd class="kbd-hint"><span id="cmdKeyLabel">⌘</span>K</kbd>
+        </button>
+
+        <div class="topbar-right">
+          <div class="switcher" data-menu="language">
+            <button id="languageMenuButton" class="menu-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="">
+              <span class="i" data-icon="languages" aria-hidden="true"></span>
+              <span class="menu-trigger-text">
+                <strong id="languageCurrent"></strong>
+                <small id="languageHint"></small>
+              </span>
+              <span class="i chevron" data-icon="chevron-down" aria-hidden="true"></span>
+            </button>
+            <span class="switcher-label visually-hidden" id="languageLabel"></span>
+            <div id="languageMenu" class="menu-popover" role="listbox" tabindex="-1"></div>
+          </div>
+
+          <div class="switcher" data-menu="user">
+            <button id="userMenuButton" class="menu-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="">
+              <span class="avatar av-sm" id="userMenuAvatar" aria-hidden="true"></span>
+              <span class="menu-trigger-text">
+                <strong id="userCurrent"></strong>
+                <small id="userHint"></small>
+              </span>
+              <span class="i chevron" data-icon="chevron-down" aria-hidden="true"></span>
+            </button>
+            <span class="switcher-label visually-hidden" id="userLabel"></span>
+            <div id="userMenu" class="menu-popover" role="listbox" tabindex="-1"></div>
+          </div>
+
+          <div class="switcher" data-menu="notif">
+            <button id="notifBtn" class="icon-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="">
+              <span class="i" data-icon="bell" aria-hidden="true"></span>
+              <span class="notif-dot" aria-hidden="true"></span>
+            </button>
+            <div id="notifMenu" class="menu-popover notif-popover" role="dialog" tabindex="-1"></div>
+          </div>
+
+          <div class="topbar-divider" aria-hidden="true"></div>
+
+          <button id="storyModeBtn" class="btn btn-primary" type="button">
+            <span class="i" data-icon="play" aria-hidden="true"></span><span class="btn-text"></span>
+          </button>
+        </div>
+      </header>
+
+      <main id="mainContent" tabindex="-1">
+        <section id="inboxView" class="view">
+          <div class="view-head">
+            <div>
+              <div class="eyebrow"><span class="live-dot" aria-hidden="true"></span><span id="liveStatusLabel"></span></div>
+              <h1 id="inboxTitle"></h1>
+              <p id="inboxSubtitle"></p>
+            </div>
+            <div class="view-head-actions">
+              <button id="focusModeBtn" class="btn btn-ghost" type="button">
+                <span class="i" data-icon="focus" aria-hidden="true"></span><span class="btn-text"></span>
+              </button>
+              <button id="refreshBtn" class="btn btn-soft" type="button">
+                <span class="i" data-icon="refresh" aria-hidden="true"></span><span class="btn-text"></span>
+              </button>
+            </div>
+          </div>
+
+          <div id="stats" class="stats"></div>
+
+          <div class="capabilities">
+            <button class="cap" type="button" data-command="triage">
+              <span class="cap-icon cyan" data-icon="zap" aria-hidden="true"></span>
+              <span class="cap-text">
+                <strong id="triageTitle"></strong>
+                <small id="triageSubtitle"></small>
+              </span>
+              <span class="i cap-arrow" data-icon="arrow-right" aria-hidden="true"></span>
+            </button>
+            <button class="cap" type="button" data-command="handoff">
+              <span class="cap-icon amber" data-icon="file" aria-hidden="true"></span>
+              <span class="cap-text">
+                <strong id="handoffTitle"></strong>
+                <small id="handoffSubtitle"></small>
+              </span>
+              <span class="i cap-arrow" data-icon="arrow-right" aria-hidden="true"></span>
+            </button>
+            <button class="cap" type="button" data-command="insight">
+              <span class="cap-icon green" data-icon="chart" aria-hidden="true"></span>
+              <span class="cap-text">
+                <strong id="insightTitle"></strong>
+                <small id="insightSubtitle"></small>
+              </span>
+              <span class="i cap-arrow" data-icon="arrow-right" aria-hidden="true"></span>
+            </button>
+          </div>
+
+          <div class="inbox-grid">
+            <section id="conversationRegion" class="panel list-panel" aria-label="">
+              <div class="filters">
+                <div class="search-field">
+                  <span class="i" data-icon="search" aria-hidden="true"></span>
+                  <input id="searchInput" type="search" autocomplete="off" />
+                </div>
+                <div class="filter-row">
+                  <select id="accountFilter" aria-label=""></select>
+                  <select id="statusFilter" aria-label="">
+                    <option value="all"></option>
+                    <option value="open"></option>
+                    <option value="pending"></option>
+                    <option value="resolved"></option>
+                  </select>
+                  <select id="sortFilter" aria-label="">
+                    <option value="recent"></option>
+                    <option value="wait"></option>
+                    <option value="priority"></option>
+                  </select>
+                </div>
+              </div>
+              <div id="conversationList" class="conversation-list" role="listbox" tabindex="0" aria-label=""></div>
+            </section>
+
+            <section id="threadRegion" class="panel thread-panel" aria-label="">
+              <div class="thread-head">
+                <span class="avatar av-lg" id="threadAvatar" aria-hidden="true"></span>
+                <div class="thread-head-text">
+                  <h2 id="threadTitle"></h2>
+                  <p id="threadMeta"></p>
+                </div>
+                <button id="contextToggleBtn" class="icon-btn" type="button" aria-pressed="true" aria-label="">
+                  <span class="i" data-icon="panel-right" aria-hidden="true"></span>
+                </button>
+              </div>
+              <div id="messages" class="messages"></div>
+              <div id="quickReplies" class="quick-replies"></div>
+              <form id="sendForm" class="composer">
+                <input id="messageInput" autocomplete="off" />
+                <button type="submit" id="sendBtn" class="btn btn-primary">
+                  <span class="i" data-icon="send" aria-hidden="true"></span><span class="btn-text"></span>
+                </button>
+              </form>
+            </section>
+
+            <aside class="panel context-panel" id="contextPanel" aria-label="">
+              <div class="context-scroll" id="contextScroll"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="accountsView" class="view hidden">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h1 id="accountsTitle"></h1>
+                <p id="accountsSubtitle"></p>
+              </div>
+            </div>
+            <div class="line-connect">
+              <div class="line-connect-head">
+                <div>
+                  <span class="connect-kicker" id="lineMessagingApiLabel"></span>
+                  <h2 id="connectTitle"></h2>
+                  <p id="connectSubtitle"></p>
+                </div>
+                <a id="lineConsoleLink" class="btn btn-soft" href="https://developers.line.biz/console/" target="_blank" rel="noreferrer">
+                  <span class="i" data-icon="grid" aria-hidden="true"></span><span class="btn-text"></span>
+                </a>
+              </div>
+              <div id="connectorTabs" class="connector-tabs" role="tablist" aria-label="">
+                <button type="button" role="tab" data-platform="line" aria-selected="true"><span class="platform-mark"><img src="/assets/platforms/line.png" alt="" /></span><span>LINE</span></button>
+                <button type="button" role="tab" data-platform="messenger" aria-selected="false"><span class="platform-mark"><img src="/assets/platforms/messenger.svg" alt="" /></span><span>Messenger</span></button>
+                <button type="button" role="tab" data-platform="instagram" aria-selected="false"><span class="platform-mark"><img src="/assets/platforms/instagram.svg" alt="" /></span><span>Instagram</span></button>
+              </div>
+              <form id="accountForm" class="connect-form">
+                <label class="connect-field" for="accountSecretInput">
+                  <span id="channelSecretLabel"></span>
+                  <input name="channelSecret" id="accountSecretInput" type="password" autocomplete="off" required />
+                </label>
+                <label class="connect-field" for="accountTokenInput">
+                  <span id="channelTokenLabel"></span>
+                  <input name="channelAccessToken" id="accountTokenInput" type="password" autocomplete="off" required />
+                </label>
+                <label class="connect-field" id="externalAccountField" for="externalAccountInput" hidden>
+                  <span id="externalAccountLabel"></span>
+                  <input name="externalAccountId" id="externalAccountInput" type="text" autocomplete="off" />
+                </label>
+                <button type="submit" id="saveAccountBtn" class="btn btn-primary connect-submit">
+                  <span class="i" data-icon="link" aria-hidden="true"></span><span class="btn-text"></span>
+                </button>
+              </form>
+              <div id="connectionResult" class="connection-result" role="status" aria-live="polite" hidden></div>
+            </div>
+            <div id="storageSafety" class="storage-safety" role="status" hidden></div>
+            <div class="connected-head">
+              <h2 id="connectedAccountsTitle"></h2>
+              <span id="connectedAccountsCount"></span>
+            </div>
+            <div id="accountList" class="account-grid"></div>
+          </div>
+        </section>
+
+        <section id="accessView" class="view hidden">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h1 id="accessTitle"></h1>
+                <p id="accessSubtitle"></p>
+              </div>
+            </div>
+            <div id="accessList" class="access-list"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Command palette -->
+    <div id="paletteOverlay" class="overlay" hidden>
+      <div id="palette" class="palette" role="dialog" aria-modal="true" aria-label="">
+        <div class="palette-input">
+          <span class="i" data-icon="search" aria-hidden="true"></span>
+          <input id="paletteInput" type="text" autocomplete="off" />
+          <kbd>Esc</kbd>
+        </div>
+        <div id="paletteList" class="palette-list" role="listbox"></div>
+        <div class="palette-foot">
+          <span><kbd>↑</kbd><kbd>↓</kbd> <span id="paletteNavHint"></span></span>
+          <span><kbd>↵</kbd> <span id="paletteRunHint"></span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Capability drawer -->
+    <div id="drawerOverlay" class="overlay" hidden>
+      <aside id="drawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+        <div class="drawer-head">
+          <div class="drawer-head-text">
+            <span class="drawer-kicker" id="drawerKicker"></span>
+            <h2 id="drawerTitle"></h2>
+          </div>
+          <button id="drawerCloseBtn" class="icon-btn" type="button" aria-label="">
+            <span class="i" data-icon="x" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div id="drawerBody" class="drawer-body"></div>
+      </aside>
+    </div>
+
+    <!-- Demo story mode -->
+    <div id="storyOverlay" class="story-overlay" hidden>
+      <div id="storySpotlight" class="story-spotlight" aria-hidden="true"></div>
+      <div id="storyCard" class="story-card" role="dialog" aria-modal="true" aria-labelledby="storyTitle">
+        <div class="story-top">
+          <span class="story-step" id="storyStep"></span>
+          <button id="storyCloseBtn" class="icon-btn" type="button" aria-label="">
+            <span class="i" data-icon="x" aria-hidden="true"></span>
+          </button>
+        </div>
+        <h3 id="storyTitle"></h3>
+        <p id="storyText"></p>
+        <div class="story-progress" id="storyProgress" aria-hidden="true"></div>
+        <div class="story-actions">
+          <button id="storyPrevBtn" class="btn btn-ghost" type="button"></button>
+          <button id="storyNextBtn" class="btn btn-primary" type="button"></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast-host" id="toastHost" aria-live="polite" aria-atomic="false"></div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,14 @@
+node_modules/
+data.json
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.omni-inbox.change
+.test-data.change
+backups/
+.test-backups/
+server.log
+server.err.log
+server.out.log
+*.corrupt-*
+.env
