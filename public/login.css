@@ -1,0 +1,243 @@
+/* =========================================================================
+   Omni Inbox - sign-in
+   Reuses the design tokens from styles.css; overrides the app grid layout so
+   the first screen is a single, focused authentication card. Radius <= 8px,
+   neutral-dominant, platform hues reserved for the channel row only.
+   ========================================================================= */
+
+body.login-body {
+  display: block;
+  min-height: 100vh;
+  grid-template-columns: none;
+  background:
+    radial-gradient(1100px 620px at 14% -8%, #eef2f7 0%, rgba(238, 242, 247, 0) 60%),
+    radial-gradient(900px 560px at 96% 108%, #e9eef4 0%, rgba(233, 238, 244, 0) 55%),
+    var(--bg);
+  color: var(--ink);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: 20px clamp(16px, 4vw, 40px);
+}
+
+/* ---- Top bar: brand + language ---- */
+.login-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.login-brand { display: flex; align-items: center; gap: 12px; }
+.login-brand .mark {
+  width: 40px; height: 40px;
+  border-radius: var(--r2);
+  display: grid; place-items: center;
+  background: linear-gradient(155deg, var(--rail-3), var(--rail-2));
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), var(--sh1);
+}
+.login-brand .mark svg { width: 21px; height: 21px; }
+.login-brand-text { display: flex; flex-direction: column; line-height: 1.2; }
+.login-brand-text strong { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.login-brand-text small { color: var(--muted); font-size: 12px; }
+
+.lang-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--pill);
+  box-shadow: var(--sh1);
+}
+.lang-toggle button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: var(--pill);
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.lang-toggle button:hover { color: var(--ink-2); }
+.lang-toggle button[aria-pressed="true"] {
+  background: var(--primary);
+  color: #fff;
+}
+.lang-toggle button:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* ---- Centered card ---- */
+.login-main {
+  display: grid;
+  place-items: center;
+  padding: 32px 0;
+}
+.login-card {
+  width: min(420px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r2);
+  box-shadow: var(--sh2);
+  padding: clamp(24px, 4vw, 36px);
+  animation: cardIn var(--t-drawer) var(--ease) both;
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.login-eyebrow {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.login-eyebrow .dot {
+  width: 7px; height: 7px; border-radius: var(--pill);
+  background: var(--green);
+  box-shadow: 0 0 0 3px var(--green-tint);
+}
+.login-card h1 { font-size: 22px; letter-spacing: -0.02em; }
+.login-card .login-sub { margin-top: 6px; font-size: 13px; color: var(--muted); }
+
+/* ---- Channels row ---- */
+.login-channels {
+  display: flex; align-items: center; gap: 8px;
+  margin: 18px 0 22px;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r1);
+}
+.login-channels .channels-label { font-size: 11.5px; color: var(--muted); margin-right: auto; }
+.login-channels .channel {
+  width: 26px; height: 26px;
+  border-radius: var(--r1);
+  display: grid; place-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+}
+.login-channels .channel img { width: 16px; height: 16px; object-fit: contain; display: block; }
+
+/* ---- Form ---- */
+.login-form { display: grid; gap: 14px; }
+.field { display: grid; gap: 6px; }
+.field label { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.input-wrap { position: relative; display: flex; align-items: center; }
+.input-wrap .lead {
+  position: absolute; left: 11px;
+  display: grid; place-items: center;
+  color: var(--muted-2); pointer-events: none;
+}
+.input-wrap .lead svg { width: 16px; height: 16px; }
+.login-form input {
+  width: 100%;
+  font: inherit; font-size: 14px;
+  color: var(--ink);
+  padding: 11px 12px 11px 36px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r1);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.login-form input[type="password"], .login-form input.has-toggle { padding-right: 44px; }
+.login-form input:hover { border-color: var(--muted-2); }
+.login-form input:focus-visible {
+  outline: none;
+  border-color: var(--primary-600);
+  box-shadow: 0 0 0 3px rgba(27, 36, 49, 0.14);
+}
+.login-form input[aria-invalid="true"] {
+  border-color: var(--coral);
+  box-shadow: 0 0 0 3px var(--coral-tint);
+}
+.toggle-visibility {
+  position: absolute; right: 6px;
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  border: 0; background: transparent;
+  color: var(--muted); cursor: pointer;
+  border-radius: var(--r1);
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.toggle-visibility:hover { color: var(--ink-2); background: var(--surface-3); }
+.toggle-visibility:focus-visible { outline: none; box-shadow: var(--ring); }
+.toggle-visibility svg { width: 17px; height: 17px; }
+
+.login-submit {
+  margin-top: 4px;
+  width: 100%;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font: inherit; font-size: 14px; font-weight: 600;
+  color: #fff;
+  padding: 12px 16px;
+  background: var(--primary);
+  border: 1px solid var(--primary-700);
+  border-radius: var(--r1);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(17, 22, 31, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.login-submit:hover { background: var(--primary-600); }
+.login-submit:active { transform: translateY(1px); }
+.login-submit:focus-visible { outline: none; box-shadow: var(--ring); }
+.login-submit[disabled] { opacity: 0.72; cursor: progress; }
+.login-submit .submit-icon { width: 17px; height: 17px; flex: none; }
+.login-submit .spinner {
+  width: 16px; height: 16px;
+  border-radius: var(--pill);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  animation: spin 0.7s linear infinite;
+  display: none;
+}
+.login-submit.is-loading .spinner { display: inline-block; }
+.login-submit.is-loading .submit-icon { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Alert ---- */
+.login-alert {
+  display: none;
+  align-items: flex-start; gap: 9px;
+  margin-bottom: 16px;
+  padding: 11px 13px;
+  background: var(--coral-tint);
+  border: 1px solid rgba(224, 70, 75, 0.28);
+  border-radius: var(--r1);
+  color: var(--coral-700);
+  font-size: 12.5px; line-height: 1.5;
+}
+.login-alert.show { display: flex; animation: alertIn var(--t-pop) var(--ease) both; }
+.login-alert svg { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+@keyframes alertIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.login-foot {
+  display: flex; justify-content: center;
+  color: var(--muted-2); font-size: 11.5px;
+  padding-top: 8px;
+}
+
+@media (max-width: 480px) {
+  .login-shell { padding: 16px; }
+  .login-card { box-shadow: var(--sh1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-card, .login-alert { animation: none; }
+  .login-submit .spinner { animation-duration: 1.4s; }
+  * { transition: none !important; }
+}

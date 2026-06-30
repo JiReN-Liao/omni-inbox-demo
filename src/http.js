@@ -8,6 +8,11 @@ import crypto from "node:crypto";
 
 const ERROR_MESSAGES_ZH = {
   UNKNOWN_DEMO_USER: "找不到指定的示範使用者。",
+  NOT_AUTHENTICATED: "請先登入後再繼續操作。",
+  INVALID_CREDENTIALS: "帳號或密碼不正確。",
+  ACCOUNT_LOCKED: "嘗試次數過多，請稍後再試。",
+  INVALID_CSRF_TOKEN: "安全驗證失敗，請重新整理頁面後再試一次。",
+  LOGIN_FIELDS_REQUIRED: "請輸入帳號與密碼。",
   ADMIN_ONLY: "此操作僅限管理員使用。",
   INVALID_ACCOUNT: "帳號資料不完整或格式不正確。",
   INVALID_LINE_CREDENTIALS: "LINE 憑證無效，請確認頻道密鑰與存取權杖。",
@@ -57,6 +62,55 @@ export function securityHeaders(req, res, next) {
     "permissions-policy": "camera=(), microphone=(), geolocation=()"
   });
   next();
+}
+
+/** Parse the request Cookie header into a plain object (no cookie-parser dep). */
+export function parseCookies(req) {
+  const header = req.headers?.cookie;
+  if (!header) return {};
+  const cookies = {};
+  for (const part of header.split(";")) {
+    const index = part.indexOf("=");
+    if (index < 0) continue;
+    const name = part.slice(0, index).trim();
+    if (!name) continue;
+    cookies[name] = decodeURIComponent(part.slice(index + 1).trim());
+  }
+  return cookies;
+}
+
+/** True when the request reached us over HTTPS (directly or via a proxy). */
+export function isSecureRequest(req) {
+  if (req.secure) return true;
+  return String(req.header?.("x-forwarded-proto") || "").split(",")[0].trim() === "https";
+}
+
+/**
+ * Set the session cookie: HttpOnly + SameSite=Lax always, Secure when the
+ * request is HTTPS (so it still works on http://localhost during development).
+ */
+export function setSessionCookie(req, res, name, value, maxAgeMs) {
+  const segments = [
+    `${name}=${value}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${Math.floor(maxAgeMs / 1000)}`
+  ];
+  if (isSecureRequest(req)) segments.push("Secure");
+  appendCookie(res, segments.join("; "));
+}
+
+export function clearSessionCookie(req, res, name) {
+  const segments = [`${name}=`, "Path=/", "HttpOnly", "SameSite=Lax", "Max-Age=0"];
+  if (isSecureRequest(req)) segments.push("Secure");
+  appendCookie(res, segments.join("; "));
+}
+
+function appendCookie(res, cookie) {
+  const existing = res.getHeader("Set-Cookie");
+  if (!existing) res.setHeader("Set-Cookie", cookie);
+  else res.setHeader("Set-Cookie", Array.isArray(existing) ? [...existing, cookie] : [existing, cookie]);
 }
 
 /** Route guard: only allow admin demo users through. */

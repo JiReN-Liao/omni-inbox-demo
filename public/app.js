@@ -3,7 +3,9 @@
    Vanilla JS, no build step. Talks to the existing Express API only.
    ========================================================================= */
 
-let currentUser = localStorage.getItem("lineUnifiedUser") || "admin";
+let currentUser = null;      // signed-in user id, resolved from the session
+let currentRole = "agent";   // signed-in user role
+let csrfToken = null;        // CSRF token issued with the session at login
 let currentLanguage = localStorage.getItem("lineUnifiedLanguage") || "zh";
 let currentConversationId = null;
 let users = [];
@@ -241,6 +243,18 @@ const i18n = {
     agentRole: "客服人員",
     allAccess: "可檢視所有帳號",
     limitedAccess: "僅限授權帳號",
+    signedInAs: "目前登入",
+    accountSettings: "帳號設定",
+    signOut: "登出",
+    signOutHint: "結束目前的登入工作階段",
+    sessionExpired: "登入工作階段已逾時，請重新登入。",
+    accountSettingsKicker: "帳號",
+    accountSettingsTitle: "帳號設定",
+    accountIdentityLabel: "登入身份",
+    accountRoleLabel: "權限角色",
+    accountAccessLabel: "可存取帳號",
+    accountSecurityNote: "密碼採用 scrypt 雜湊安全保存；變更密碼與新增成員請依部署指南由管理員處理。",
+    accountSignOut: "登出此工作階段",
     userSource: "個人",
     groupSource: "群組",
     roomSource: "聊天室",
@@ -487,6 +501,18 @@ const i18n = {
     agentRole: "Agent",
     allAccess: "Can view every account",
     limitedAccess: "Authorized accounts only",
+    signedInAs: "Signed in as",
+    accountSettings: "Account settings",
+    signOut: "Sign out",
+    signOutHint: "End your current session",
+    sessionExpired: "Your session has expired. Please sign in again.",
+    accountSettingsKicker: "Account",
+    accountSettingsTitle: "Account settings",
+    accountIdentityLabel: "Signed-in identity",
+    accountRoleLabel: "Role",
+    accountAccessLabel: "Account access",
+    accountSecurityNote: "Passwords are stored as scrypt hashes. Password changes and new members are handled by an administrator per the deployment guide.",
+    accountSignOut: "Sign out of this session",
     userSource: "User",
     groupSource: "Group",
     roomSource: "Room",
@@ -533,6 +559,8 @@ const ICONS = {
   refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>',
   focus: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/>',
   "panel-right": '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
+  "log-out": '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+  settings: '<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   send: '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/>',
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
@@ -651,20 +679,32 @@ function waitLabel(minutes) {
 }
 
 /* =============================== API =============================== */
+// Redirect to the sign-in page, preserving where the operator was headed.
+function redirectToLogin() {
+  const next = encodeURIComponent(location.pathname + location.search);
+  location.replace(`/login?next=${next}`);
+}
+
 const api = async (path, options = {}) => {
+  const method = (options.method || "GET").toUpperCase();
+  const headers = {
+    "Content-Type": "application/json",
+    "Accept-Language": currentLanguage === "zh" ? "zh-TW" : "en-US",
+    ...(options.headers || {})
+  };
+  // Authentication rides the HttpOnly session cookie; mutating requests also
+  // carry the CSRF token issued at login.
+  if (csrfToken && method !== "GET" && method !== "HEAD") headers["x-csrf-token"] = csrfToken;
+
   let response;
   try {
-    response = await fetch(path, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        "Accept-Language": currentLanguage === "zh" ? "zh-TW" : "en-US",
-        "x-demo-user": currentUser,
-        ...(options.headers || {})
-      }
-    });
+    response = await fetch(path, { ...options, credentials: "same-origin", headers });
   } catch {
     throw new Error(t("networkError"));
+  }
+  if (response.status === 401) {
+    redirectToLogin();
+    throw new Error(t("sessionExpired"));
   }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -724,6 +764,15 @@ async function boot() {
   cacheEls();
   paintIcons();
   applyLanguage();
+
+  // Resolve identity from the session before showing anything. If the session
+  // is gone, hand back to the sign-in page rather than rendering an empty shell.
+  const identity = await resolveIdentity();
+  if (!identity) return redirectToLogin();
+  currentUser = identity.user.id;
+  currentRole = identity.user.role;
+  csrfToken = identity.csrfToken;
+
   const me = await api("/api/me");
   users = me.users;
   renderLanguageMenu();
@@ -731,6 +780,37 @@ async function boot() {
   wireEvents();
   await refreshAll();
   connectLiveUpdates();
+}
+
+// GET /api/auth/me is the one endpoint that reports identity without erroring;
+// it returns { user: null } when there is no valid session.
+async function resolveIdentity() {
+  try {
+    const response = await fetch("/api/auth/me", {
+      credentials: "same-origin",
+      headers: { "Accept-Language": currentLanguage === "zh" ? "zh-TW" : "en-US" }
+    });
+    if (!response.ok) return null;
+    const body = await response.json();
+    return body.user ? body : null;
+  } catch {
+    return null;
+  }
+}
+
+async function signOut() {
+  closeMenus();
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: csrfToken ? { "x-csrf-token": csrfToken } : {}
+    });
+  } catch {
+    /* Even if the request fails, fall through to the login page. */
+  }
+  if (liveSource) liveSource.close();
+  location.assign("/login");
 }
 
 function applyLanguage() {
@@ -845,19 +925,69 @@ function renderLanguageMenu() {
   bindMenuOptions(els.languageMenu, (id) => setLanguage(id));
 }
 
+// The account menu reflects the signed-in operator only — identity is fixed by
+// the session, so there is no arbitrary user switching in the live console.
 function renderUserMenu() {
-  if (!users.length) return;
-  const active = users.find((u) => u.id === currentUser) || users[0];
+  const active = currentIdentity();
   els.userCurrent.textContent = active.name;
+  els.userHint.textContent = roleLabel(active.role);
   paintAvatar(els.userMenuAvatar, active.name, active.id, "av-sm");
-  els.userMenu.innerHTML = users
-    .map((u) => menuOption({
-      id: u.id, title: u.name,
-      meta: u.role === "admin" ? t("allAccess") : t("limitedAccess"),
-      active: u.id === currentUser, type: "user", badge: roleLabel(u.role), seed: u.id
-    }))
-    .join("");
-  bindMenuOptions(els.userMenu, (id) => setUser(id));
+  const accessMeta = active.role === "admin" ? t("allAccess") : t("limitedAccess");
+  els.userMenu.innerHTML = `
+    <div class="menu-identity">
+      ${avatarMarkup(active.name, active.id, "av-md")}
+      <span class="menu-identity-text">
+        <span class="menu-identity-kicker">${escapeHtml(t("signedInAs"))}</span>
+        <strong>${escapeHtml(active.name)}</strong>
+        <small>${escapeHtml(roleLabel(active.role))} · ${escapeHtml(accessMeta)}</small>
+      </span>
+    </div>
+    <div class="menu-sep" role="separator"></div>
+    <button class="menu-action" type="button" data-action="settings">
+      ${icon("settings")}
+      <span class="menu-action-text"><strong>${escapeHtml(t("accountSettings"))}</strong></span>
+    </button>
+    <button class="menu-action danger" type="button" data-action="signout">
+      ${icon("log-out")}
+      <span class="menu-action-text"><strong>${escapeHtml(t("signOut"))}</strong><small>${escapeHtml(t("signOutHint"))}</small></span>
+    </button>`;
+  els.userMenu.querySelector('[data-action="settings"]').addEventListener("click", () => { closeMenus(); openAccountSettings(); });
+  els.userMenu.querySelector('[data-action="signout"]').addEventListener("click", signOut);
+}
+
+// The session identity, falling back to the team list (or raw id) for the name.
+function currentIdentity() {
+  const fromTeam = users.find((u) => u.id === currentUser);
+  return fromTeam || { id: currentUser || "user", name: currentUser || "User", role: currentRole };
+}
+
+function openAccountSettings() {
+  const active = currentIdentity();
+  const accessMeta = active.role === "admin" ? t("allAccess") : t("limitedAccess");
+  els.drawerOverlay.hidden = false;
+  els.drawerKicker.textContent = t("accountSettingsKicker");
+  els.drawerTitle.textContent = t("accountSettingsTitle");
+  els.drawerBody.innerHTML = `
+    <div class="account-settings">
+      <div class="account-id-row">
+        ${avatarMarkup(active.name, active.id, "av-lg")}
+        <div class="account-id-text">
+          <strong>${escapeHtml(active.name)}</strong>
+          <span class="role-tag">${escapeHtml(roleLabel(active.role))}</span>
+        </div>
+      </div>
+      <dl class="account-meta">
+        <div><dt>${escapeHtml(t("accountIdentityLabel"))}</dt><dd>${escapeHtml(active.name)}</dd></div>
+        <div><dt>${escapeHtml(t("accountRoleLabel"))}</dt><dd>${escapeHtml(roleLabel(active.role))}</dd></div>
+        <div><dt>${escapeHtml(t("accountAccessLabel"))}</dt><dd>${escapeHtml(accessMeta)}</dd></div>
+      </dl>
+      <p class="account-note">${escapeHtml(t("accountSecurityNote"))}</p>
+      <button class="btn btn-soft account-signout" type="button" id="drawerSignOut">
+        ${icon("log-out")}<span>${escapeHtml(t("accountSignOut"))}</span>
+      </button>
+    </div>`;
+  els.drawerBody.querySelector("#drawerSignOut").addEventListener("click", signOut);
+  els.drawerCloseBtn.focus();
 }
 
 function menuOption({ id, title, meta, active, type, badge, seed, icon: iconName }) {
@@ -915,19 +1045,6 @@ async function setLanguage(languageId) {
   setStatus(t("langSwitched"));
 }
 
-async function setUser(userId) {
-  currentUser = userId;
-  localStorage.setItem("lineUnifiedUser", currentUser);
-  currentConversationId = null;
-  activeConversation = null;
-  clientFilter = null;
-  filters = { status: "all", accountId: "all", query: "" };
-  els.searchInput.value = "";
-  renderUserMenu();
-  await refreshAll();
-  connectLiveUpdates();
-}
-
 function goView(view) {
   document.querySelectorAll(".nav").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
@@ -969,7 +1086,9 @@ async function refreshAll() {
 function connectLiveUpdates() {
   if (typeof EventSource === "undefined") return;
   if (liveSource) liveSource.close();
-  liveSource = new EventSource(`/api/stream?demoUser=${encodeURIComponent(currentUser)}`);
+  // EventSource sends the HttpOnly session cookie automatically on same origin,
+  // so the realtime channel authenticates without exposing identity in the URL.
+  liveSource = new EventSource("/api/stream");
   liveSource.addEventListener("refresh", () => {
     clearTimeout(liveTimer);
     liveTimer = setTimeout(liveRefresh, 300);
@@ -1128,8 +1247,18 @@ function syncListActive() {
 
 /* =============================== Conversation thread =============================== */
 function withTransition(update) {
-  if (document.startViewTransition && !prefersReducedMotion()) document.startViewTransition(update);
-  else update();
+  if (document.startViewTransition && !prefersReducedMotion()) {
+    // A transition can be aborted (rapid switches, page navigation); its
+    // rejected promise is expected and must not surface as a console error.
+    const transition = document.startViewTransition(update);
+    // Each promise can reject when a transition is superseded or aborted; all
+    // are expected and must be swallowed so none surfaces as a console error.
+    transition.ready?.catch(() => {});
+    transition.finished?.catch(() => {});
+    transition.updateCallbackDone?.catch(() => {});
+  } else {
+    update();
+  }
 }
 function prefersReducedMotion() {
   return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1495,7 +1624,7 @@ function buildCommands() {
   [{ id: "zh", name: t("zhLanguage") }, { id: "en", name: t("enLanguage") }].forEach((l) => {
     if (l.id !== currentLanguage) list.push({ group: t("groupSwitch"), icon: "languages", label: `${t("cmdLang")}${l.name}`, run: () => setLanguage(l.id) });
   });
-  users.forEach((u) => { if (u.id !== currentUser) list.push({ group: t("groupSwitch"), icon: "user", label: `${t("cmdUser")}${u.name}`, run: () => setUser(u.id) }); });
+  list.push({ group: t("groupActions"), icon: "log-out", label: t("signOut"), run: () => signOut() });
   // current-conversation actions
   if (activeConversation) {
     ["open", "pending", "resolved"].forEach((s) => {

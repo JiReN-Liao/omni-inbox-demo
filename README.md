@@ -14,17 +14,56 @@ This portfolio project demonstrates connector architecture, signed webhooks, thi
 - Assignment, status, priority, tags, notes, handoff summaries, and operational insights.
 - Traditional Chinese and English interfaces with saved preference.
 - Server-Sent Events for realtime refresh.
-- Demo-safe credentials and seeded conversations across all three platforms.
+- Username/password sign-in with server-side sessions, scrypt-hashed passwords, CSRF protection, and login rate limiting.
 - Durable SQLite storage with WAL, full synchronous commits, checksums, version snapshots, and automatic backup recovery.
 
 ## Run
 
 ```bash
 npm install
-npm run dev
+
+# First launch only: create the initial administrator. The password is hashed
+# on startup and the plaintext is never stored or logged.
+BOOTSTRAP_ADMIN_USERNAME=admin BOOTSTRAP_ADMIN_PASSWORD='a-long-random-password' npm run dev
 ```
 
-Open `http://localhost:4317` and use the platform tabs under **Accounts** to try each connector.
+Open `http://localhost:4317`. You are redirected to `/login`; sign in with the
+administrator credentials above to reach the console. Use the platform tabs
+under **Accounts** to try each connector.
+
+## Authentication
+
+The console is gated by a real login. Unauthenticated requests to `/` are
+redirected to `/login`, and every `/api` route requires a valid session.
+
+- **First administrator** — set `BOOTSTRAP_ADMIN_USERNAME` and
+  `BOOTSTRAP_ADMIN_PASSWORD` (see `.env.example`). On startup, if no admin
+  exists, the credential is created and the password is hashed with
+  `crypto.scrypt`. If an admin already exists, the variables are ignored and
+  never overwrite a stored password. Unset them after first launch.
+- **Sign in / out** — `POST /api/auth/login`, `POST /api/auth/logout`,
+  `GET /api/auth/me`. Login mints a fresh session id (preventing fixation) and
+  sets an `HttpOnly`, `SameSite=Lax` cookie (`Secure` is added automatically
+  over HTTPS). The top-right account menu shows the signed-in operator, role,
+  account settings, and sign-out.
+- **Sessions** — stored in a dedicated `omni-auth.sqlite` database, isolated
+  from conversation data so session churn and expiry never touch conversations,
+  accounts, messages, snapshots, or backups. Expired sessions are swept
+  automatically.
+- **CSRF** — state-changing requests on a cookie session must send the
+  `x-csrf-token` issued at login (the frontend does this automatically).
+- **Rate limiting** — repeated failed logins per username/IP trigger a
+  temporary lockout. Wrong password and unknown user return one identical error.
+- **Roles** — Admin and Agent permissions and per-account access are unchanged;
+  the live console no longer allows arbitrary identity switching.
+
+### Changing a password / adding members
+
+Password changes and new members are managed server-side. With the server
+stopped, rotate the admin password by clearing the admin credential and
+re-bootstrapping, or use the exported `setPassword(userId, password)` /
+`upsertCredential(...)` helpers in `src/auth.js` from a small Node script. See
+[Deployment](docs/DEPLOYMENT.md) for production guidance.
 
 ## Test
 
@@ -39,11 +78,17 @@ LINE uses a channel secret and channel access token. Messenger and Instagram use
 
 Production callbacks require a public HTTPS deployment. Meta self-service onboarding should use Facebook Login for Business and requires the relevant permissions, App Review, and Business Verification before connecting customer-owned assets.
 
-## Demo Users
+## Roles
+
+Each operator signs in with their own credential. Roles and per-account access:
 
 - `Admin`: all three platforms and permission management.
-- `Amy`: LINE and Instagram.
-- `Kai`: Messenger.
+- `Amy` (agent): LINE and Instagram.
+- `Kai` (agent): Messenger.
+
+The bootstrap step creates the `Admin` credential. Agent credentials are
+provisioned by an administrator (via `upsertCredential` in `src/auth.js`); the
+seed only defines their roles and account access, not passwords.
 
 ## Documentation
 
@@ -55,4 +100,4 @@ Production callbacks require a public HTTPS deployment. Meta self-service onboar
 - [Deployment](docs/DEPLOYMENT.md)
 - [Roadmap](docs/ROADMAP.md)
 
-Application state is stored in `omni-inbox.sqlite`; verified recovery copies are retained under `backups/`. An existing `data.json` is imported automatically on first launch. Production hardening should additionally provide off-device encrypted backups, real authentication, encrypted secrets, queue-backed delivery retries, and centralized observability.
+Application state is stored in `omni-inbox.sqlite`; credentials and sessions live in a separate `omni-auth.sqlite`; verified recovery copies are retained under `backups/`. An existing `data.json` is imported automatically on first launch. Secrets, credentials, hashes, tokens, and cookies are never committed (`.env`, `*.sqlite*`, `data.json`, and `backups/` are git-ignored). Production hardening should additionally provide off-device encrypted backups, encrypted secrets at rest, queue-backed delivery retries, and centralized observability.

@@ -1,6 +1,16 @@
 # API
 
-Demo API requests use `x-demo-user`. Unknown identities receive `401 UNKNOWN_DEMO_USER`; a missing header defaults to `admin` for the local showcase. Responses include `x-request-id`, and errors include `error`, `code`, and `requestId`.
+Every `/api` route requires an authenticated session (see **Authentication**). Responses include `x-request-id`, and errors include `error`, `code`, and `requestId`.
+
+> The legacy `x-demo-user` / `?demoUser=` shortcut is honoured **only** under the automated test runner (`NODE_TEST_CONTEXT`). In any other environment it is ignored and a real session is required.
+
+## Authentication
+
+- `POST /api/auth/login`: body `{ username, password }`. On success sets an `HttpOnly`, `SameSite=Lax` session cookie (`Secure` over HTTPS), returns `{ user, csrfToken }`, and mints a fresh session id (prevents fixation). Wrong password and unknown user both return `401 INVALID_CREDENTIALS` with an identical message. Too many failures return `429 ACCOUNT_LOCKED`.
+- `POST /api/auth/logout`: destroys the current session and clears the cookie.
+- `GET /api/auth/me`: returns `{ user, csrfToken }` for the active session, or `{ user: null }` when signed out. Never errors.
+
+Unauthenticated `/api` requests receive `401 NOT_AUTHENTICATED`. State-changing requests (`POST`/`PUT`/`PATCH`/`DELETE`) authenticated by a cookie session must send the session's `x-csrf-token`; a missing or wrong token returns `403 INVALID_CSRF_TOKEN`. `GET /` redirects unauthenticated visitors to `/login`.
 
 ## Accounts and Connectors
 
@@ -36,8 +46,8 @@ Provider message IDs are retained in a bounded deduplication window so webhook r
 - `GET /api/stats`: visible workload counters.
 - `GET /api/insights`: platform/account distribution, status totals, unassigned work, priority, and waiting conversations.
 - `GET /api/audit`: permission-filtered operational events.
-- `GET /api/stream`: Server-Sent Events channel for realtime refresh.
-- `GET /api/me`: current demo identity and available users.
+- `GET /api/stream`: Server-Sent Events channel for realtime refresh. Authenticates with the session cookie (EventSource sends it automatically); identity is never passed in the URL.
+- `GET /api/me`: current identity and the team list (for assignment).
 - `PUT /api/users/:userId/access`: update an agent's account access. Admin only.
 - `POST /api/simulate`: create a demo inbound event on any visible account.
 

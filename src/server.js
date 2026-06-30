@@ -34,7 +34,26 @@ import {
 import { getLineBotInfo, sendLineMessage, verifyLineSignature } from "./line.js";
 import { getMetaAccountInfo, sendMetaMessage, verifyMetaSignature } from "./meta.js";
 import { validateAccount, validateConversationPatch } from "./validation.js";
-import { asyncHandler, clampInteger, requireAdmin, securityHeaders, sendError } from "./http.js";
+import {
+  asyncHandler,
+  clampInteger,
+  clearSessionCookie,
+  parseCookies,
+  requireAdmin,
+  securityHeaders,
+  sendError,
+  setSessionCookie
+} from "./http.js";
+import {
+  SESSION_COOKIE,
+  authenticate,
+  bootstrapAdminFromEnv,
+  createSession,
+  destroySession,
+  getSession,
+  sessionTtlMs,
+  sweepExpiredSessions
+} from "./auth.js";
 import { subscribeToData } from "./events.js";
 import { DEFAULT_PORT, LIMITS, SERVICE_NAME, SERVICE_VERSION } from "./constants.js";
 
@@ -42,20 +61,79 @@ export const app = express();
 const port = Number(process.env.PORT || DEFAULT_PORT);
 const serverFile = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(serverFile);
+const publicDir = path.join(__dirname, "../public");
+
+// The legacy `x-demo-user` / `?demoUser=` shortcuts are honoured ONLY inside the
+// automated test runner (NODE_TEST_CONTEXT is set by `node --test`). In every
+// other environment authentication requires a real signed-in session.
+const TEST_AUTH = Boolean(process.env.NODE_TEST_CONTEXT) && process.env.DISABLE_TEST_AUTH !== "true";
+
+// Methods that change state must carry a matching CSRF token when they are
+// authenticated by a cookie session.
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+// Provision the first administrator (no-op without the BOOTSTRAP_* env vars or
+// when an admin already exists) and keep expired sessions swept away. The sweep
+// only deletes from auth_sessions — conversations and backups are untouched.
+bootstrapAdminFromEnv();
+const sessionSweep = setInterval(() => sweepExpiredSessions(), 60 * 60 * 1000);
+sessionSweep.unref?.();
+
+/**
+ * Resolve the signed-in user for an API request. Prefers a real cookie session;
+ * falls back to the test-only header/query shortcut when TEST_AUTH is active.
+ * Returns `{ user, session }`, the string "UNKNOWN" for an explicit but invalid
+ * test user, or null when the request is unauthenticated.
+ */
+function resolveRequestUser(req, { allowQuery = false } = {}) {
+  const cookies = parseCookies(req);
+  const session = getSession(cookies[SESSION_COOKIE]);
+  if (session) {
+    const user = getUser(session.userId);
+    if (user) return { user, session };
+    destroySession(session.id);
+  }
+  if (TEST_AUTH) {
+    const demo = req.header("x-demo-user") || (allowQuery ? req.query.demoUser : null);
+    if (demo) {
+      const user = getUser(String(demo));
+      return user ? { user, session: null } : "UNKNOWN";
+    }
+  }
+  return null;
+}
 
 /* ------------------------------- Global setup ------------------------------- */
 app.disable("x-powered-by");
 app.use(securityHeaders);
-app.use(express.static(path.join(__dirname, "../public")));
+
+/* ------------------------------- Page guards -------------------------------- */
+// Registered BEFORE the static handler so the console HTML is gated on auth and
+// never served (or flashed) to an unauthenticated visitor. Static assets
+// (styles, scripts, logos) below remain public — they carry no data or secrets.
+app.get(["/", "/index.html"], (req, res) => {
+  if (resolveRequestUser(req)) return res.sendFile(path.join(publicDir, "index.html"));
+  return res.redirect(302, "/login");
+});
+
+app.get(["/login", "/login.html"], (req, res) => {
+  if (resolveRequestUser(req)) return res.redirect(302, "/");
+  return res.sendFile(path.join(publicDir, "login.html"));
+});
+
+app.use(express.static(publicDir, { index: false }));
 app.use("/api", express.json({ limit: LIMITS.jsonBody }));
 
 /* ------------------------------- Realtime (SSE) ----------------------------- */
-// Registered before the demo-auth middleware so EventSource — which cannot send
-// custom headers — can authenticate with a `demoUser` query parameter. Pushes a
-// lightweight `refresh` signal whenever the data file changes; clients refetch.
+// Registered before the auth gate. EventSource cannot send custom headers, so it
+// authenticates with the HttpOnly session cookie (sent automatically on same
+// origin); the legacy `?demoUser=` query is accepted only under the test runner.
+// Pushes a lightweight `refresh` signal whenever data changes; clients refetch.
 app.get("/api/stream", (req, res) => {
-  const user = getUser(req.query.demoUser || req.header("x-demo-user") || "admin");
-  if (!user) return sendError(res, 401, "UNKNOWN_DEMO_USER", "Unknown demo user");
+  const resolved = resolveRequestUser(req, { allowQuery: true });
+  if (resolved === "UNKNOWN") return sendError(res, 401, "UNKNOWN_DEMO_USER", "Unknown demo user");
+  if (!resolved) return sendError(res, 401, "NOT_AUTHENTICATED", "Authentication required");
+  const { user } = resolved;
 
   res.set({
     "Content-Type": "text/event-stream; charset=utf-8",
@@ -91,12 +169,61 @@ app.get("/healthz", (req, res) => {
   });
 });
 
-/* ------------------------------- Demo auth ---------------------------------- */
-// A missing header intentionally defaults to `admin` for the local showcase;
-// an unknown user is rejected rather than silently inheriting admin access.
+/* ------------------------------- Auth endpoints ----------------------------- */
+// Registered before the session gate: login is the unauthenticated entry point,
+// and `me` reports the current identity (or null) without erroring.
+app.post("/api/auth/login", (req, res) => {
+  const username = String(req.body?.username || "").trim();
+  const password = String(req.body?.password || "");
+  if (!username || !password) return sendError(res, 400, "LOGIN_FIELDS_REQUIRED", "Username and password are required");
+
+  const ip = req.ip || req.socket?.remoteAddress || "";
+  const result = authenticate(username, password, { ip });
+  if (!result.ok) {
+    if (result.code === "locked") return sendError(res, 429, "ACCOUNT_LOCKED", "Too many attempts. Try again later.");
+    return sendError(res, 401, "INVALID_CREDENTIALS", "Incorrect username or password");
+  }
+
+  const appUser = getUser(result.user.userId);
+  if (!appUser) return sendError(res, 401, "INVALID_CREDENTIALS", "Incorrect username or password");
+
+  // A fresh session id is minted on every login, preventing session fixation.
+  const session = createSession(appUser.id);
+  setSessionCookie(req, res, SESSION_COOKIE, session.id, sessionTtlMs);
+  res.json({ user: maskIdentity(appUser), csrfToken: session.csrfToken });
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  const cookies = parseCookies(req);
+  const session = getSession(cookies[SESSION_COOKIE]);
+  if (session) destroySession(session.id);
+  clearSessionCookie(req, res, SESSION_COOKIE);
+  res.json({ ok: true });
+});
+
+app.get("/api/auth/me", (req, res) => {
+  const resolved = resolveRequestUser(req);
+  if (!resolved || resolved === "UNKNOWN") return res.json({ user: null });
+  res.json({ user: maskIdentity(resolved.user), csrfToken: resolved.session?.csrfToken || null });
+});
+
+/* ------------------------------- Session gate ------------------------------- */
+// Every remaining /api route requires authentication. State-changing requests
+// that ride a cookie session must also present a matching CSRF token.
 app.use("/api", (req, res, next) => {
-  req.currentUser = getUser(req.header("x-demo-user") || "admin");
-  if (!req.currentUser) return sendError(res, 401, "UNKNOWN_DEMO_USER", "Unknown demo user");
+  const resolved = resolveRequestUser(req);
+  if (resolved === "UNKNOWN") return sendError(res, 401, "UNKNOWN_DEMO_USER", "Unknown demo user");
+  if (!resolved) return sendError(res, 401, "NOT_AUTHENTICATED", "Authentication required");
+
+  req.currentUser = resolved.user;
+  req.session = resolved.session;
+
+  if (req.session && MUTATING_METHODS.has(req.method)) {
+    const token = req.header("x-csrf-token") || "";
+    if (!safeEqual(token, req.session.csrfToken)) {
+      return sendError(res, 403, "INVALID_CSRF_TOKEN", "Invalid or missing CSRF token");
+    }
+  }
   next();
 });
 
@@ -387,6 +514,23 @@ app.use((error, req, res, next) => {
   console.error(`[${req.requestId}]`, error);
   return sendError(res, 500, "INTERNAL_ERROR", "Unexpected server error");
 });
+
+/** Public identity shape returned by the auth endpoints (no credentials). */
+function maskIdentity(user) {
+  return { id: user.id, name: user.name, role: user.role, accountIds: user.accountIds || [] };
+}
+
+/** Constant-time string comparison that tolerates differing lengths. */
+function safeEqual(a, b) {
+  const left = Buffer.from(String(a));
+  const right = Buffer.from(String(b));
+  if (left.length !== right.length) {
+    // Still run a comparison to avoid leaking length via early return timing.
+    crypto.timingSafeEqual(left, left);
+    return false;
+  }
+  return crypto.timingSafeEqual(left, right);
+}
 
 function createLineAccountId(bot) {
   const identity = String(bot.basicId || bot.userId || Date.now())
